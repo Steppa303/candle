@@ -1,0 +1,27 @@
+{
+  "name": "candle",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI Canvas for Kindle Scribe",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "node --watch server/index.js",
+    "dev:client": "cd client && npm run dev",
+    "build": "cd client && npm run build",
+    "start": "node server/index.js",
+    "pm2:start": "pm2 start ecosystem.config.js",
+    "pm2:stop": "pm2 stop candle",
+    "pm2:restart": "pm2 restart candle"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "socket.io": "^4.7.5",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0",
+    "socket.io-client": "^4.8.3"
+  }
+}

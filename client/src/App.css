@@ -1,0 +1,137 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* E-ink optimized base styles */
+:root {
+  --ink-black: #000000;
+  --ink-dark: #333333;
+  --ink-medium: #666666;
+  --ink-light: #999999;
+  --ink-lighter: #cccccc;
+  --ink-white: #ffffff;
+}
+
+/* Global resets for E-ink */
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--ink-white);
+  color: var(--ink-black);
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+/* Disable all animations and transitions globally */
+*, *::before, *::after {
+  animation: none !important;
+  animation-duration: 0s !important;
+  animation-delay: 0s !important;
+  transition: none !important;
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+}
+
+/* Canvas styles */
+canvas {
+  display: block;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+/* Button base styles - E-ink optimized */
+button {
+  min-width: 48px;
+  min-height: 48px;
+  padding: 8px 16px;
+  font-size: 16px;
+  font-weight: 500;
+  border: 2px solid var(--ink-black);
+  background-color: var(--ink-white);
+  color: var(--ink-black);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+button:active {
+  background-color: var(--ink-black);
+  color: var(--ink-white);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Input styles */
+input[type="range"] {
+  width: 100%;
+  height: 48px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-track {
+  height: 4px;
+  background: var(--ink-lighter);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  background: var(--ink-black);
+  border-radius: 50%;
+  margin-top: -10px;
+}
+
+/* Scrollbar styles */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--ink-lighter);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--ink-medium);
+}
+
+/* Modal/Dialog styles */
+dialog {
+  border: 2px solid var(--ink-black);
+  padding: 0;
+  max-width: 90vw;
+  max-height: 80vh;
+}
+
+dialog::backdrop {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+/* Text selection */
+::selection {
+  background: var(--ink-black);
+  color: var(--ink-white);
+}

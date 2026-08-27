@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#000000" />
+    <title>Candle — AI Canvas</title>
+    <style>
+      /* Prevent all animations and transitions for E-ink */
+      *, *::before, *::after {
+        animation-duration: 0s !important;
+        animation-delay: 0s !important;
+        transition-duration: 0s !important;
+        transition-delay: 0s !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <!-- Loading indicator visible before React loads -->
+      <div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui;background:#fff">
+        <div style="text-align:center">
+          <div style="font-size:48px">🕯️</div>
+          <div style="font-size:16px;margin-top:12px;color:#333">Candle wird geladen...</div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

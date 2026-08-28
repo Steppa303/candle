@@ -3,6 +3,7 @@ const db = require('./db');
 const ai = require('./ai');
 const { renderToEInkPNG, composeSvgWithTemplates } = require('./renderer');
 const { validateSvg } = require('./svgValidator');
+const { renderTemplate } = require('./templates');
 
 function setupSocketHandlers(io) {
   io.on('connection', (socket) => {
@@ -100,10 +101,11 @@ function setupSocketHandlers(io) {
           let composedSvg = validSvg;
           if (aiResponse.templates && aiResponse.templates.length > 0) {
             const templateSvgs = aiResponse.templates.map(t => {
-              // Simple template rendering: wrap params into SVG text
-              const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 100'><text x='10' y='30' font-size='${t.params?.FONTSIZE || 14}' fill='${t.params?.COLOR || '#333333'}' font-family='sans-serif'>${t.params?.TEXT || ''}</text></svg>`;
+              const svg = renderTemplate(t.name, t.params || {});
+              if (!svg) return null;
               return { svg, x: t.x || 0, y: t.y || 0 };
             }).filter(Boolean);
+
             composedSvg = composeSvgWithTemplates(validSvg, templateSvgs, canvasWidth, canvasHeight);
           }
 

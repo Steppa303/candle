@@ -1,11 +1,11 @@
 # 🕯️ Candle — Plan & Goals
 
-**Stand:** 2026-08-27
+**Stand:** 2026-08-28
 **Status:** Aktiv
 
 ---
 
-## Erledigt (Phase 1+2)
+## Erledigt (Phase 1+2+V2)
 
 - [x] E-Ink Drawing Optimierungen (rAF Batching, EMA Smoothing, 1:1 Pixel)
 - [x] Two-Canvas System (Foreground raw + Background geglättet)
@@ -19,6 +19,14 @@
 - [x] Floating Toolbox (FAB, Stift-Dicke, Glättung-Slider, Farbwähler, KI-Toggle)
 - [x] Canvas-Größe an Scribe angepasst (dynamisch, DPR 1 auf E-Ink)
 - [x] JSON-Fallback Fix (rohe KI-Antworten nicht mehr im Overlay)
+- [x] **V2 Server-Side Rendering** (28.08.2026) — SVG→PNG Pipeline, E-Ink Dithering, Paging
+  - renderer.js (resvg-js + sharp + Floyd-Steinberg)
+  - svgValidator.js (SVG-Sanitization)
+  - pages-Tabelle + DB-Migration
+  - V2_SYSTEM_PROMPT (SVG-Output-Format)
+  - V2-Pfad in socket.js (validate → compose → render → PNG)
+  - Frontend: v2Mode Toggle, PNG-Display, Paging-Buttons
+  - V1/V2 Koexistenz (Fallback)
 
 ---
 
@@ -48,6 +56,8 @@ User und KI bauen gemeinsam eine visuelle Geschichte auf — Zug um Zug.
 
 **Aufwand:** ~4-5 Stunden
 
+**Hinweis:** Erster Versuch (candle-story-worker) failed wegen OpenRouter 402. Nochmal spawnen mit MiMo.
+
 ---
 
 ## Ausgeschlossen (vorerst nicht geplant)
@@ -67,4 +77,4 @@ User und KI bauen gemeinsam eine visuelle Geschichte auf — Zug um Zug.
 
 ---
 
-_Plan erstellt: 2026-08-27 21:32. Aktualisiert: 2026-08-27 21:46 — Story-Modus statt 4 Modi._
+_Plan erstellt: 2026-08-27 21:32. Aktualisiert: 2026-08-28 06:40 — V2 implementiert, Story-Modus als nächstes._

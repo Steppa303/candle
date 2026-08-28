@@ -398,11 +398,24 @@ export function useCanvas(options: UseCanvasOptions = {}) {
   const [isAnimating, setIsAnimating] = useState(false);
 
   // Render AI drawing on background canvas (animated)
-  const renderAIDrawing = useCallback(async (drawingCommands: any[]) => {
+  const renderAIDrawing = useCallback(async (data: { png?: string; drawing?: any[] }) => {
     const bgCtx = bgCtxRef.current;
     const bgCanvas = bgCanvasRef.current;
-    if (!bgCtx || !drawingCommands) return;
+    if (!bgCtx || !bgCanvas) return;
 
+    if (data.png) {
+      // === V2 PFAD: Fertiges PNG vom Server ===
+      const img = new Image();
+      img.onload = () => {
+        bgCtx.drawImage(img, 0, 0, bgCanvas.width, bgCanvas.height);
+      };
+      img.src = `data:image/png;base64,${data.png}`;
+      return;
+    }
+
+    if (!data.drawing) return;
+
+    // === V1 PFAD: Drawing-Commands rendern (Fallback) ===
     // Abort any previous animation
     if (animationAbortRef.current) {
       animationAbortRef.current.abort();
@@ -414,7 +427,7 @@ export function useCanvas(options: UseCanvasOptions = {}) {
     const delay = isEInk() ? 150 : 80;
 
     try {
-      await renderDrawingCommandsAnimated(bgCtx, drawingCommands, {
+      await renderDrawingCommandsAnimated(bgCtx, data.drawing, {
         delayPerCommand: delay,
         signal: animationAbortRef.current.signal,
         bgCanvas: bgCanvas ?? undefined,

@@ -3,7 +3,8 @@ import { io, Socket } from 'socket.io-client';
 
 interface UseSocketOptions {
   onThinking?: () => void;
-  onResponse?: (data: { text: string; drawing: any[] | null; interactionId: number; isProaktiv?: boolean }) => void;
+  onResponse?: (data: { text: string; png?: string; drawing: any[] | null; interactionId: number; isProaktiv?: boolean }) => void;
+  onPageNew?: (data: { pageId: number; png: string; text: string }) => void;
   onError?: (data: { message: string }) => void;
   onSessionCreated?: (data: { session: any }) => void;
   onSessionHistory?: (data: { session: any; interactions: any[] }) => void;
@@ -67,6 +68,11 @@ export function useSocket(options: UseSocketOptions = {}) {
       optionsRef.current.onSessionDeleted?.(data);
     });
 
+    // V2: Page events
+    socket.on('page:new', (data) => {
+      optionsRef.current.onPageNew?.(data);
+    });
+
     // Cleanup
     return () => {
       socket.disconnect();
@@ -75,8 +81,8 @@ export function useSocket(options: UseSocketOptions = {}) {
   }, []);
 
   // Send functions
-  const sendStrokeComplete = useCallback((sessionId: string, canvasPng: string, canvasWidth: number, canvasHeight: number, contentInfo?: { bounds: { x: number; y: number; width: number; height: number }; avgObjectSize: number; contentDensity: number }, storyMode?: boolean) => {
-    socketRef.current?.emit('stroke:complete', { sessionId, canvasPng, canvasWidth, canvasHeight, contentInfo, storyMode });
+  const sendStrokeComplete = useCallback((sessionId: string, canvasPng: string, canvasWidth: number, canvasHeight: number, contentInfo?: { bounds: { x: number; y: number; width: number; height: number }; avgObjectSize: number; contentDensity: number }, storyMode?: boolean, v2Mode?: boolean) => {
+    socketRef.current?.emit('stroke:complete', { sessionId, canvasPng, canvasWidth, canvasHeight, contentInfo, storyMode, v2Mode });
   }, []);
 
   const sendSessionNew = useCallback((name?: string) => {

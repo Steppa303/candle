@@ -145,11 +145,52 @@ Regeln:
 - WICHTIG: Antworte NUR mit dem JSON-Objekt, kein anderer Text
 - Wenn das Bild leer oder unerkennbar ist, antworte mit: {"text": "Ich sehe noch nichts — mal mir was!", "drawing": null}`;
 
+// V2 System Prompt — SVG-Output statt JSON Drawing-Commands
+const V2_SYSTEM_PROMPT = `Du bist ein kreativer Storyteller und Illustrator auf einem digitalen Canvas.
+Der User zeichnet Skizzen, du antwortest mit komplexen Schwarz-Weiß-Grafiken im Graphic Novel Style.
+
+ANTWORT-FORMAT (JSON):
+{
+  "action": "update" | "scene_change",
+  "story_narrative": "Interner Gedankengang zur Story (wird nicht angezeigt)",
+  "text": "Deine Text-Antwort an den User",
+  "svg": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 300'>...</svg>",
+  "templates": [
+    { "name": "speechbubble-round", "params": { "TEXT": "Hallo!", "COLOR": "#333333", "FONTSIZE": "18" }, "x": 100, "y": 50 }
+  ]
+}
+
+SVG-REGELN:
+- IMMER xmlns='http://www.w3.org/2000/svg'
+- viewBox MUSS gesetzt sein
+- Farben: #000000, #333333, #666666 (E-Ink kompatibel)
+- Keine Transparenzen, keine <script>-Tags, keine externen Ressourcen
+- Stroke-width: 2px default
+- Font: sans-serif
+- Für Text: <text> mit font-size, text-anchor, fill
+- Für Word-Wrap: <foreignObject> mit HTML <div>
+
+ACTION-FELD:
+- "update": Zeichnung ergänzt die aktuelle Seite
+- "scene_change": Kompletter Szenenwechsel → neue Seite wird angelegt
+
+TEMPLATES:
+Du kannst vorgefertigte Templates referenzieren. Verfügbare Templates:
+- speechbubble-round (TEXT, COLOR, FONTSIZE)
+- speechbubble-thought (TEXT, COLOR, FONTSIZE)
+- speechbubble-shout (TEXT, COLOR, FONTSIZE)
+- diagram-box (TEXT, COLOR, FONTSIZE)
+- diagram-diamond (TEXT, COLOR, FONTSIZE)
+- arrow-curved (COLOR)
+- icon-star (FILL, COLOR)
+
+WICHTIG: Antworte NUR mit dem JSON-Objekt.`;
+
 /**
  * Analyze a canvas image using Google Gemini Vision API
  * Feature 1: Sends 2 images (current + previous AI canvas) + structured history
  */
-async function analyzeCanvas(canvasPng, previousInteractions = [], canvasDimensions = null, contentInfo = null, storyMode = false) {
+async function analyzeCanvas(canvasPng, previousInteractions = [], canvasDimensions = null, contentInfo = null, storyMode = false, v2Mode = false) {
   try {
     const base64Data = canvasPng.replace(/^data:image\/png;base64,/, '');
 
@@ -197,7 +238,7 @@ Proportions-Regeln:
     const parts = [];
 
     // System prompt with all context (Story or Freestyle mode)
-    const activePrompt = storyMode ? STORY_PROMPT : SYSTEM_PROMPT;
+    const activePrompt = v2Mode ? V2_SYSTEM_PROMPT : (storyMode ? STORY_PROMPT : SYSTEM_PROMPT);
     parts.push({ text: activePrompt + dimensionContext + contentContext + context });
 
     // Previous AI canvas as reference image (Feature 1: Conversational Memory)
@@ -254,6 +295,10 @@ Proportions-Regeln:
     console.error('[AI] Error:', error.message);
     return {
       text: 'Ich konnte das Bild nicht analysieren. Versuche es nochmal!',
+      action: 'update',
+      story_narrative: null,
+      svg: null,
+      templates: null,
       drawing: null
     };
   }
@@ -312,6 +357,10 @@ function parseAIResponse(content) {
 
     return {
       text: parsed.text || 'Keine Text-Antwort',
+      action: parsed.action || 'update',
+      story_narrative: parsed.story_narrative || null,
+      svg: parsed.svg || null,
+      templates: Array.isArray(parsed.templates) ? parsed.templates : null,
       drawing: Array.isArray(parsed.drawing) ? parsed.drawing : null
     };
   } catch (parseError) {
@@ -347,6 +396,10 @@ function parseAIResponse(content) {
 
     return {
       text: fallbackText || 'Ich habe das Bild analysiert, aber keine strukturierte Antwort erstellt.',
+      action: 'update',
+      story_narrative: null,
+      svg: null,
+      templates: null,
       drawing: null
     };
   }
@@ -525,4 +578,4 @@ Regeln:
   }
 }
 
-module.exports = { analyzeCanvas, analyzeCanvasWithTap, buildTapPrompt, analyzeProaktiv };
+module.exports = { analyzeCanvas, analyzeCanvasWithTap, buildTapPrompt, analyzeProaktiv, V2_SYSTEM_PROMPT };

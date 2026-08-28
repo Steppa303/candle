@@ -47,8 +47,20 @@ export function Canvas({
   // Render AI drawing when commands change (animated)
   React.useEffect(() => {
     if (drawingCommands && drawingCommands.length > 0) {
+      // Check for V2 PNG marker
+      if (drawingCommands[0]?.type === 'v2png' && drawingCommands[0]?.png) {
+        renderAIDrawing({ png: drawingCommands[0].png }).then(() => {
+          if (onAIDrawingComplete) {
+            const png = exportPNG();
+            if (png) onAIDrawingComplete(png);
+          }
+        });
+        return;
+      }
+
+      // V1: Drawing commands
       let cancelled = false;
-      renderAIDrawing(drawingCommands).then(() => {
+      renderAIDrawing({ drawing: drawingCommands }).then(() => {
         // After animation completes, export canvas PNG for conversational memory
         if (!cancelled && onAIDrawingComplete) {
           const png = exportPNG();

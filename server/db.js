@@ -44,6 +44,29 @@ try {
   console.log('[DB] Migration: added canvas_after_ai column');
 }
 
+// Migration: add ai_svg column to interactions (V2)
+try {
+  db.prepare('SELECT ai_svg FROM interactions LIMIT 1').get();
+} catch {
+  db.exec('ALTER TABLE interactions ADD COLUMN ai_svg TEXT');
+  console.log('[DB] Migration: added ai_svg column');
+}
+
+// V2: Pages table for paging system
+db.exec(`
+  CREATE TABLE IF NOT EXISTS pages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    page_number INTEGER NOT NULL,
+    png_snapshot TEXT NOT NULL,
+    ai_text TEXT,
+    story_narrative TEXT,
+    created_at INTEGER DEFAULT (unixepoch()),
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_pages_session ON pages(session_id);
+`);
+
 // CRUD Functions
 
 function createSession(id, name = 'Untitled') {
@@ -90,6 +113,34 @@ function updateInteractionCanvasAfterAi(interactionId, canvasAfterAi) {
   db.prepare('UPDATE interactions SET canvas_after_ai = ? WHERE id = ?').run(canvasAfterAi, interactionId);
 }
 
+// V2: Page functions
+function addPage(sessionId, pngSnapshot, aiText = null, storyNarrative = null) {
+  const maxPage = db.prepare('SELECT MAX(page_number) as max FROM pages WHERE session_id = ?').get(sessionId);
+  const nextPage = (maxPage?.max || 0) + 1;
+
+  const stmt = db.prepare(`
+    INSERT INTO pages (session_id, page_number, png_snapshot, ai_text, story_narrative)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+  const result = stmt.run(sessionId, nextPage, pngSnapshot, aiText, storyNarrative);
+  return result.lastInsertRowid;
+}
+
+function getPages(sessionId) {
+  return db.prepare('SELECT * FROM pages WHERE session_id = ? ORDER BY page_number ASC').all(sessionId);
+}
+
+function getCurrentPage(sessionId) {
+  return db.prepare('SELECT * FROM pages WHERE session_id = ? ORDER BY page_number DESC LIMIT 1').get(sessionId);
+}
+
+function updateCurrentPage(sessionId, pngSnapshot, aiText) {
+  const page = getCurrentPage(sessionId);
+  if (page) {
+    db.prepare('UPDATE pages SET png_snapshot = ?, ai_text = ? WHERE id = ?').run(pngSnapshot, aiText, page.id);
+  }
+}
+
 module.exports = {
   db,
   createSession,
@@ -99,5 +150,9 @@ module.exports = {
   updateSession,
   addInteraction,
   getInteractions,
-  updateInteractionCanvasAfterAi
+  updateInteractionCanvasAfterAi,
+  addPage,
+  getPages,
+  getCurrentPage,
+  updateCurrentPage
 };

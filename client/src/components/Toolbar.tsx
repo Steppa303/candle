@@ -13,6 +13,10 @@ interface ToolbarProps {
   isThinking: boolean;
   smoothingEnabled: boolean;
   onSmoothingChange: (enabled: boolean) => void;
+  v2Mode?: boolean;
+  pages?: Array<{ id: number; png: string; text: string }>;
+  currentPageIndex?: number;
+  goToPage?: (index: number) => void;
 }
 
 const COLORS = [
@@ -34,7 +38,11 @@ export function Toolbar({
   onNewSession,
   isThinking,
   smoothingEnabled,
-  onSmoothingChange
+  onSmoothingChange,
+  v2Mode,
+  pages,
+  currentPageIndex,
+  goToPage
 }: ToolbarProps) {
   return (
     <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t-2 border-black">
@@ -101,8 +109,33 @@ export function Toolbar({
           </button>
         </div>
 
-        {/* Right: Debounce + New Session */}
+        {/* Right: Paging (V2) + Debounce + New Session */}
         <div className="flex items-center gap-2 flex-shrink-0">
+          {/* V2 Paging */}
+          {v2Mode && pages && pages.length > 1 && goToPage && (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => goToPage((currentPageIndex || 0) - 1)}
+                disabled={(currentPageIndex || 0) <= 0}
+                className="px-2 py-2 text-sm border-2 border-black disabled:opacity-30"
+                title="Vorherige Seite"
+              >
+                ← Zurück
+              </button>
+              <span className="px-2 py-2 text-sm">
+                {(currentPageIndex || 0) + 1}/{pages.length}
+              </span>
+              <button
+                onClick={() => goToPage((currentPageIndex || 0) + 1)}
+                disabled={(currentPageIndex || 0) >= pages.length - 1}
+                className="px-2 py-2 text-sm border-2 border-black disabled:opacity-30"
+                title="Nächste Seite"
+              >
+                Vor →
+              </button>
+            </div>
+          )}
+
           <DebounceSlider />
           
           <button

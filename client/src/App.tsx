@@ -22,6 +22,9 @@ export default function App() {
   const [smoothingValue, setSmoothingValue] = useState(0.4);
   const [aiEnabled, setAiEnabled] = useState(true);
   const [storyMode, setStoryMode] = useState(() => localStorage.getItem('candle_story_mode') === 'true');
+  const [v2Mode, setV2Mode] = useState(() => localStorage.getItem('candle_v2_mode') === 'true');
+  const [pages, setPages] = useState<Array<{ id: number; png: string; text: string }>>([]);
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [isTapMode, setIsTapMode] = useState(false);
   const [proaktivDelay, setProaktivDelay] = useState<number>(() => {
     const stored = localStorage.getItem('candle_proaktiv_delay');
@@ -49,11 +52,26 @@ export default function App() {
     setIsThinking(true);
   }, []);
 
-  const handleResponse = useCallback((data: { text: string; drawing: any[] | null; interactionId: number }) => {
+  const handleResponse = useCallback((data: { text: string; png?: string; drawing: any[] | null; interactionId: number }) => {
     setIsThinking(false);
     setAiText(data.text);
     lastInteractionIdRef.current = data.interactionId;
-    if (data.drawing) {
+
+    if (data.png) {
+      // V2: PNG direkt auf Canvas anzeigen
+      // useCanvas.renderAIDrawing({ png: data.png }) wird über drawingCommands-Ref gehandelt
+      setDrawingCommands(null); // Clear V1 commands
+      // PNG wird über den renderAIDrawing-Pfad gerendert
+      setPages(prev => {
+        const updated = [...prev];
+        if (updated.length > 0) {
+          updated[updated.length - 1] = { ...updated[updated.length - 1], png: data.png!, text: data.text };
+        }
+        return updated;
+      });
+      // Trigger PNG render via a special marker
+      setDrawingCommands([{ type: 'v2png', png: data.png }]);
+    } else if (data.drawing) {
       setDrawingCommands(data.drawing);
     }
 
@@ -75,12 +93,24 @@ export default function App() {
 
   const handleSessionHistory = useCallback((data: { session: any; interactions: any[] }) => {
     setCurrentSession(data.session);
+    // Load pages for V2
+    setPages([]);
+    setCurrentPageIndex(0);
     // TODO: Re-render previous interactions on canvas
   }, [setCurrentSession]);
 
   const handleSessionDeleted = useCallback((data: { sessionId: string }) => {
     loadSessions();
+    setPages([]);
+    setCurrentPageIndex(0);
   }, [loadSessions]);
+
+  // V2: Handle page:new (scene change)
+  const handlePageNew = useCallback((data: { pageId: number; png: string; text: string }) => {
+    setPages(prev => [...prev, { id: data.pageId, png: data.png, text: data.text }]);
+    setCurrentPageIndex(prev => prev + 1);
+    setAiText(data.text);
+  }, []);
 
   // Socket connection
   const {
@@ -94,6 +124,7 @@ export default function App() {
   } = useSocket({
     onThinking: handleThinking,
     onResponse: handleResponse,
+    onPageNew: handlePageNew,
     onError: handleError,
     onSessionCreated: handleSessionCreated,
     onSessionHistory: handleSessionHistory,
@@ -156,6 +187,11 @@ export default function App() {
     localStorage.setItem('candle_story_mode', String(storyMode));
   }, [storyMode]);
 
+  // Persist V2 mode
+  useEffect(() => {
+    localStorage.setItem('candle_v2_mode', String(v2Mode));
+  }, [v2Mode]);
+
   // Cleanup timers on unmount
   useEffect(() => {
     return () => {
@@ -181,13 +217,13 @@ export default function App() {
     if (!currentSession) {
       createSession().then((session) => {
         if (session) {
-          sendStrokeComplete(session.id, canvasPng, canvasWidth, canvasHeight, contentInfo, storyMode);
+          sendStrokeComplete(session.id, canvasPng, canvasWidth, canvasHeight, contentInfo, storyMode, v2Mode);
         }
       });
       return;
     }
-    sendStrokeComplete(currentSession.id, canvasPng, canvasWidth, canvasHeight, contentInfo, storyMode);
-  }, [currentSession, sendStrokeComplete, createSession, aiEnabled, canvasElement, storyMode]);
+    sendStrokeComplete(currentSession.id, canvasPng, canvasWidth, canvasHeight, contentInfo, storyMode, v2Mode);
+  }, [currentSession, sendStrokeComplete, createSession, aiEnabled, canvasElement, storyMode, v2Mode]);
 
   const handleNewSession = useCallback(() => {
     createSession();
@@ -207,6 +243,18 @@ export default function App() {
     deleteSession(sessionId);
     sendSessionDelete(sessionId);
   }, [deleteSession, sendSessionDelete]);
+
+  // V2: Paging
+  const goToPage = useCallback((index: number) => {
+    if (index >= 0 && index < pages.length) {
+      setCurrentPageIndex(index);
+      const page = pages[index];
+      if (page.png) {
+        setDrawingCommands([{ type: 'v2png', png: page.png }]);
+      }
+      setAiText(page.text);
+    }
+  }, [pages]);
 
   // Handle clear canvas
   const handleClear = useCallback(() => {
@@ -254,6 +302,8 @@ export default function App() {
         onAiToggle={() => setAiEnabled(prev => !prev)}
         storyMode={storyMode}
         onStoryToggle={() => setStoryMode(prev => !prev)}
+        v2Mode={v2Mode}
+        onV2Toggle={() => setV2Mode(prev => !prev)}
         proaktivDelay={proaktivDelay}
         onProaktivDelayChange={setProaktivDelay}
       />
@@ -269,6 +319,13 @@ export default function App() {
       {storyMode && (
         <div className="absolute top-2 left-1/2 transform -translate-x-1/2 bg-amber-100 text-amber-900 px-3 py-1 text-xs z-50 font-medium">
           📖 Story-Modus
+        </div>
+      )}
+
+      {/* V2 mode indicator */}
+      {v2Mode && (
+        <div className="absolute top-2 left-1/2 transform -translate-x-1/2 bg-blue-100 text-blue-900 px-3 py-1 text-xs z-50 font-medium">
+          ⚡ V2-Modus (Server-Rendering)
         </div>
       )}
 
@@ -292,6 +349,10 @@ export default function App() {
         isThinking={isThinking}
         smoothingEnabled={smoothingEnabled}
         onSmoothingChange={setSmoothingEnabled}
+        v2Mode={v2Mode}
+        pages={pages}
+        currentPageIndex={currentPageIndex}
+        goToPage={goToPage}
       />
 
       {/* Session list modal */}

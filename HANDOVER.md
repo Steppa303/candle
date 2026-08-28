@@ -16,6 +16,7 @@ Eine für den Kindle Scribe optimierte Web-App mit einem Full-Screen Zeichen-Can
 - **Frontend:** React 18 + Vite + TailwindCSS + Canvas 2D API
 - **Backend:** Express + Socket.io + better-sqlite3 (WAL)
 - **KI:** Google Gemini 2.5 Flash (Vision API)
+- **V2 Rendering:** `@resvg/resvg-js` (SVG→PNG) + `sharp` (Dithering, E-Ink-Optimierung)
 - **Deploy:** PM2 + Caddy + Cloudflare (proxied=true)
 
 ## Architektur
@@ -41,13 +42,13 @@ projects/candle/
 ├── client/                    # React Frontend
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── Canvas.tsx         # Haupt-Canvas (Pointer + Touch Events)
+│   │   │   ├── Canvas.tsx         # Haupt-Canvas (Pointer + Touch Events, V2 PNG-Support)
 │   │   │   ├── TextOverlay.tsx    # KI-Text-Antworten
-│   │   │   ├── Toolbar.tsx        # Untere Toolbar: Session, Löschen, Neu, Glatt-Toggle
+│   │   │   ├── Toolbar.tsx        # Untere Toolbar: Session, Löschen, Neu, Glatt-Toggle, V2-Paging
 │   │   │   ├── SessionList.tsx    # Session-Auswahl
 │   │   │   ├── DebounceSlider.tsx # Debounce-Konfiguration (200-3000ms)
 │   │   │   ├── ErrorBoundary.tsx  # Fehleranzeige
-│   │   │   ├── FloatingToolbox.tsx # Floating Toolbox Orchestrator
+│   │   │   ├── FloatingToolbox.tsx # Floating Toolbox Orchestrator (inkl. V2-Toggle)
 │   │   │   ├── FAB.tsx            # Floating Action Button (draggable, schwarzer Kreis)
 │   │   │   ├── VerticalToolbar.tsx # Vertikale Toolbar (neben FAB)
 │   │   │   ├── SubMenu.tsx        # Horizontales Submenu
@@ -55,8 +56,8 @@ projects/candle/
 │   │   │   ├── SmoothingSlider.tsx # Glättung-Slider (0.0-1.0 Tension)
 │   │   │   └── ColorPicker.tsx    # Farbwähler
 │   │   ├── hooks/
-│   │   │   ├── useCanvas.ts       # Drawing-Logic, Pen-Events, PNG-Export
-│   │   │   ├── useSocket.ts       # WebSocket-Client
+│   │   │   ├── useCanvas.ts       # Drawing-Logic, Pen-Events, PNG-Export, V2 PNG-Rendering
+│   │   │   ├── useSocket.ts       # WebSocket-Client (V2: page:new Event, v2Mode Parameter)
 │   │   │   ├── useSession.ts      # Session-Management
 │   │   │   └── useDrag.ts         # Drag + Tap Detection (FAB)
 │   │   ├── utils/
@@ -70,14 +71,18 @@ projects/candle/
 │   └── package.json
 ├── server/
 │   ├── index.js                   # Express + Socket.io (Port 3011)
-│   ├── db.js                      # SQLite (better-sqlite3, WAL)
-│   ├── ai.js                      # Gemini Vision API Integration
-│   ├── socket.js                  # WebSocket Event-Handler
+│   ├── db.js                      # SQLite (better-sqlite3, WAL, pages-Tabelle)
+│   ├── ai.js                      # Gemini Vision API (V1 + V2 Prompts)
+│   ├── socket.js                  # WebSocket Event-Handler (V1 + V2 Pfade)
+│   ├── renderer.js                # **NEU** SVG → E-Ink PNG Pipeline (resvg-js + sharp)
+│   ├── svgValidator.js            # **NEU** SVG-Sanitization
 │   └── routes.js                  # REST Endpoints (Sessions CRUD)
 ├── deploy.sh                      # Build + Deploy Script
 ├── ecosystem.config.js            # PM2 Config
 ├── PLAN.md                        # Detaillierter Plan
 ├── toolbox.md                     # Floating Toolbox Plan
+├── candle-v2.md                   # V2 Spezifikation
+├── engine.md                      # V2 Rendering-Engine Spezifikation
 └── HANDOVER.md                    # Diese Datei
 ```
 
@@ -411,11 +416,96 @@ Optimierungen für minimalen Lag auf dem Kindle Scribe:
 - `client/src/components/Toolbar.tsx` — Smoothing Toggle Button (unten)
 - `client/src/App.tsx` — `smoothingEnabled` + `smoothingValue` State
 
+## V2 — Server-Side Rendering & Paging (28.08.2026)
+
+**Status:** ✅ Implementiert & Deployed
+**Spezifikation:** `candle-v2.md`, `engine.md`
+**Session:** `candle-v2-worker-retry` (MiMo V2.5 Pro, 14 Min, $1.24)
+
+### Was V2 ändert
+
+V1: Client rendert KI-Antworten als Canvas-Drawing-Commands (JSON). Limitiert durch Kindle-Browser-Performance.
+V2: Server rendert SVG → PNG (E-Ink-optimiert). Client zeigt fertiges PNG an. Kein Rendering-Lag auf dem Kindle.
+
+### V2-Architektur
+
+```
+User zeichnet → Pen-Up → PNG an Server
+  → Gemini analysiert (V2-Prompt: SVG-Output + action + story_narrative)
+  → SVG-Validation (svgValidator.js: Script-Removal, viewBox-Check, Size-Limit)
+  → SVG + Templates compositing (renderer.js)
+  → SVG → PNG Rasterisierung (resvg-js)
+  → E-Ink Dithering (sharp: Floyd-Steinberg, 1-Bit/Graustufen)
+  → PNG zurück an Client
+  → Client zeigt PNG direkt auf Canvas (kein JSON-Rendering)
+```
+
+### V2-Features
+
+**Server-Rendering-Pipeline:**
+- `server/renderer.js` — SVG → E-Ink PNG (resvg-js + sharp + Floyd-Steinberg Dithering)
+- `server/svgValidator.js` — SVG-Sanitization (Script-Removal, viewBox-Check, 50KB-Limit)
+- `composeSvgWithTemplates()` — Templates in SVG einbetten
+
+**DB-Erweiterungen:**
+- `ai_svg` Spalte in `interactions` (roher SVG-Output der KI)
+- Neue `pages` Tabelle (id, session_id, page_number, png_snapshot, ai_text, story_narrative)
+- Funktionen: `addPage()`, `getPages()`, `getCurrentPage()`, `updateCurrentPage()`
+
+**AI-Prompt (V2):**
+- `V2_SYSTEM_PROMPT` in `server/ai.js`
+- Output-Format: `{ action, svg, templates, story_narrative }`
+- `action: "update"` → bestehende Seite aktualisieren
+- `action: "scene_change"` → neue Seite anlegen
+
+**Socket-Integration:**
+- `stroke:complete` → extrahiert `v2Mode` aus Daten
+- V2-Pfad: validateSvg → composeSvgWithTemplates → renderToEInkPNG → Response mit `png` Feld
+- V1-Pfad bleibt als Fallback unverändert
+- Neues Event: `page:new` bei Szenenwechsel
+
+**Frontend:**
+- `v2Mode` State (localStorage: `candle_v2_mode`)
+- V2-Toggle in Floating Toolbox (⚡ V2 AN/AUS)
+- `renderAIDrawing()` akzeptiert `{ png?, drawing? }` — V2 zeigt PNG, V1 rendert Commands
+- Paging: `← Zurück` / `Seite X/Y` / `Vor →` in Toolbar (nur sichtbar bei V2 + mehreren Seiten)
+- `pages` Array State, `currentPageIndex`, `goToPage()`
+- V2-Modus Indicator Banner: "⚡ V2-Modus (Server-Rendering)"
+
+### V1 ↔ V2 Koexistenz
+
+- V1 und V2 teilen sich den gleichen `stroke:complete` Flow
+- `v2Mode` Flag entscheidet welcher Pfad genommen wird
+- V1: JSON Drawing-Commands → Client rendert (animiert)
+- V2: SVG → Server rendert → PNG → Client zeigt an
+- Beide Modi können pro Session umgeschaltet werden
+- Story-Modus funktioniert in beiden Pfaden
+
+### Geänderte/Neue Dateien (V2)
+
+| Datei | Status |
+|--------|--------|
+| `server/renderer.js` | **NEU** — SVG→PNG Pipeline |
+| `server/svgValidator.js` | **NEU** — SVG-Sanitization |
+| `server/db.js` | Modified — pages-Tabelle, ai_svg |
+| `server/ai.js` | Modified — V2_SYSTEM_PROMPT, parseAIResponse (svg/templates/action) |
+| `server/socket.js` | Modified — V2-Pfad in stroke:complete |
+| `client/src/hooks/useSocket.ts` | Modified — page:new Event, v2Mode Parameter |
+| `client/src/hooks/useCanvas.ts` | Modified — PNG-Rendering |
+| `client/src/App.tsx` | Modified — v2Mode, pages, Paging |
+| `client/src/components/Toolbar.tsx` | Modified — Paging-Buttons |
+| `client/src/components/FloatingToolbox.tsx` | Modified — V2-Toggle |
+| `client/src/components/Canvas.tsx` | Modified — V2 PNG-Marker |
+| `package.json` | Modified — resvg-js, sharp deps |
+
+---
+
 ## Bekannte Probleme / TODO
 
 **Siehe `PLAN.md` für aktuelle Prioritäten.**
 
-- [ ] Modi-System (P1) — Feature 4 aus interactivity.md
+- [ ] Story-Modus (P1) — Collaborative Storytelling (story.md)
+- [x] V2 Server-Side Rendering & Paging → deployed 28.08.2026
 - [x] Grid-Overlay + Scale-Reference + Proportions implementieren (position.md) → deployed 27.08.2026
 - [x] Conversational Canvas Memory (Feature 1) → deployed 27.08.2026
 - [x] Tap-Annotation (Feature 5) → deployed 27.08.2026
@@ -441,4 +531,4 @@ Optimierungen für minimalen Lag auf dem Kindle Scribe:
 
 ---
 
-_Stand: 2026-08-27 19:35. Phase 2 Features deployed: Animierte KI-Antworten + KI initiiert manchmal._
+_Stand: 2026-08-28 06:40. V2 Server-Side Rendering implementiert & deployed. Story-Modus als nächstes._

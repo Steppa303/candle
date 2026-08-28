@@ -1,6 +1,8 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('./db');
 const ai = require('./ai');
+const { renderToEInkPNG, composeSvgWithTemplates } = require('./renderer');
+const { validateSvg } = require('./svgValidator');
 
 function setupSocketHandlers(io) {
   io.on('connection', (socket) => {
@@ -57,7 +59,7 @@ function setupSocketHandlers(io) {
     // Handle stroke completion (main AI interaction)
     socket.on('stroke:complete', async (data) => {
       try {
-        const { sessionId, canvasPng, canvasWidth, canvasHeight, contentInfo, storyMode } = data;
+        const { sessionId, canvasPng, canvasWidth, canvasHeight, contentInfo, storyMode, v2Mode } = data;
 
         if (!sessionId || !canvasPng) {
           socket.emit('ai:error', { message: 'Ungültige Daten: sessionId und canvasPng erforderlich.' });
@@ -81,26 +83,78 @@ function setupSocketHandlers(io) {
         // Get previous interactions for context
         const previousInteractions = db.getInteractions(sessionId);
 
-        // Analyze canvas with AI
-        const aiResponse = await ai.analyzeCanvas(canvasPng, previousInteractions, canvasDimensions, contentInfo, storyMode);
+        // Analyze canvas with AI (v2Mode selects SVG prompt)
+        const aiResponse = await ai.analyzeCanvas(canvasPng, previousInteractions, canvasDimensions, contentInfo, storyMode, v2Mode);
 
-        // Save interaction to database (canvas_snapshot = user's canvas before AI)
-        const interactionId = db.addInteraction(
-          sessionId,
-          canvasPng,
-          aiResponse.text,
-          aiResponse.drawing ? JSON.stringify(aiResponse.drawing) : null
-        );
+        if (v2Mode && aiResponse.svg) {
+          // === V2 PFAD: Server-Side Rendering ===
 
-        // Send response back to client
-        // The client will render AI drawing and send back the updated canvas
-        socket.emit('ai:response', {
-          text: aiResponse.text,
-          drawing: aiResponse.drawing,
-          interactionId
-        });
+          // 1. SVG validieren
+          const validSvg = validateSvg(aiResponse.svg);
+          if (!validSvg) {
+            socket.emit('ai:error', { message: 'Ungültiges SVG von der KI.' });
+            return;
+          }
 
-        console.log(`AI response sent for session ${sessionId}`);
+          // 2. Templates componieren (falls vorhanden)
+          let composedSvg = validSvg;
+          if (aiResponse.templates && aiResponse.templates.length > 0) {
+            const templateSvgs = aiResponse.templates.map(t => {
+              // Simple template rendering: wrap params into SVG text
+              const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 100'><text x='10' y='30' font-size='${t.params?.FONTSIZE || 14}' fill='${t.params?.COLOR || '#333333'}' font-family='sans-serif'>${t.params?.TEXT || ''}</text></svg>`;
+              return { svg, x: t.x || 0, y: t.y || 0 };
+            }).filter(Boolean);
+            composedSvg = composeSvgWithTemplates(validSvg, templateSvgs, canvasWidth, canvasHeight);
+          }
+
+          // 3. SVG → E-Ink PNG rendern
+          const pngBase64 = await renderToEInkPNG(composedSvg, {
+            width: canvasWidth || 1200,
+            height: canvasHeight || 1600,
+            dither: true,
+            grayscale: true,
+            contrast: 1.2
+          });
+
+          // 4. Szenenwechsel?
+          if (aiResponse.action === 'scene_change') {
+            const pageId = db.addPage(sessionId, pngBase64, aiResponse.text, aiResponse.story_narrative);
+            socket.emit('page:new', { pageId, png: pngBase64, text: aiResponse.text });
+          } else {
+            // Update aktuelle Seite (oder neue Seite falls noch keine existiert)
+            const existingPage = db.getCurrentPage(sessionId);
+            if (existingPage) {
+              db.updateCurrentPage(sessionId, pngBase64, aiResponse.text);
+            } else {
+              db.addPage(sessionId, pngBase64, aiResponse.text, aiResponse.story_narrative);
+            }
+            socket.emit('ai:response', {
+              text: aiResponse.text,
+              png: pngBase64,
+              interactionId: null
+            });
+          }
+
+          // 5. Interaction speichern (mit SVG für History)
+          db.addInteraction(sessionId, canvasPng, aiResponse.text, null, null, aiResponse.svg);
+
+        } else {
+          // === V1 PFAD (Fallback, unverändert) ===
+          const interactionId = db.addInteraction(
+            sessionId,
+            canvasPng,
+            aiResponse.text,
+            aiResponse.drawing ? JSON.stringify(aiResponse.drawing) : null
+          );
+
+          socket.emit('ai:response', {
+            text: aiResponse.text,
+            drawing: aiResponse.drawing,
+            interactionId
+          });
+        }
+
+        console.log(`AI response sent for session ${sessionId} (v2: ${!!v2Mode})`);
       } catch (error) {
         console.error('Error processing stroke:', error);
         socket.emit('ai:error', { message: 'Fehler bei der KI-Analyse. Versuche es nochmal!' });
